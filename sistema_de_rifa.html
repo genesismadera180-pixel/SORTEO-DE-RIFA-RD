@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Rifa Interactiva</title>
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --libre-color: #22c55e;
+            --apartado-color: #eab308;
+            --pagado-color: #ef4444;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1, h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #0f172a;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                grid-template-columns: 2fr 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        /* Estadísticas */
+        .estadisticas {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .barra {
+            width: 100%;
+            height: 20px;
+            background-color: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        #barraDisponible {
+            height: 100%;
+            width: 100%;
+            background-color: var(--libre-color);
+            transition: width 0.3s ease;
+        }
+
+        .estadisticas p {
+            margin: 8px 0;
+            font-size: 1.05rem;
+        }
+
+        /* Formulario */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            transition: background 0.2s;
+        }
+
+        .btn-primary { background: var(--primary-color); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+
+        .btn-random { background: #8b5cf6; color: white; }
+        .btn-random:hover { background: #7c3aed; }
+
+        .btn-admin { background: #64748b; color: white; }
+        .btn-admin:hover { background: #475569; }
+
+        .btn-csv { background: #059669; color: white; }
+        .btn-csv:hover { background: #047857; }
+
+        /* Cuadrícula de números */
+        .grid-numeros {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
+            gap: 6px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+
+        .num {
+            padding: 8px 0;
+            text-align: center;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .num.libre { background: var(--libre-color); color: white; }
+        .num.apartado { background: var(--apartado-color); color: white; cursor: not-allowed; }
+        .num.pagado { background: var(--pagado-color); color: white; cursor: not-allowed; }
+        .num.seleccionado { outline: 3px solid #000; scale: 1.05; }
+
+        /* Tabla Admin */
+        #adminPanel {
+            display: none;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        th { background: #f1f5f9; }
+    </style>
+</head>
+<body>
+
+    <h1>🎟️ Gran Rifa Interactiva</h1>
+
+    <div class="container">
+        <!-- Panel Principal / Formulario -->
+        <div>
+            <div class="card">
+                <h2>Reserva tu Número</h2>
+                <div class="form-group">
+                    <label for="nombre">Nombre Completo:</label>
+                    <input type="text" id="nombre" placeholder="Tu nombre completo">
+                </div>
+                <div class="form-group">
+                    <label for="telefono">Teléfono / WhatsApp:</label>
+                    <input type="text" id="telefono" placeholder="Ej: 8091234567">
+                </div>
+                <div class="form-group">
+                    <label for="numeros">Números Seleccionados:</label>
+                    <input type="text" id="numeros" readonly placeholder="Haz clic en la lista abajo">
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn-primary" onclick="reservar()">Reservar por WhatsApp</button>
+                    <button class="btn-random" onclick="boletoAzar()">Elegir al Azar</button>
+                    <button class="btn-admin" onclick="mostrarAdmin()">Panel Admin</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Selecciona tus números (000 - 999)</h2>
+                <div class="grid-numeros" id="gridNumeros"></div>
+            </div>
+        </div>
+
+        <!-- Estadísticas -->
+        <div>
+            <div class="estadisticas">
+                <h2>📊 Disponibilidad</h2>
+                <div class="barra">
+                    <div id="barraDisponible"></div>
+                </div>
+                <p><strong id="porcentajeDisponible">100%</strong> disponible</p>
+                <p>🟢 Libres: <span id="cantidadLibre">1000</span></p>
+                <p>🟡 Apartados: <span id="cantidadApartado">0</span></p>
+                <p>🔴 Pagados: <span id="cantidadPagado">0</span></p>
+                <p>🎟️ Total: 1000 números</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel Admin -->
+    <div id="adminPanel" class="card">
+        <h2>Panel de Administración</h2>
+        <button class="btn-csv" onclick="descargarCSV()">📥 Descargar CSV</button>
+        <table id="tabla"></table>
+    </div>
+
+    <script>
+        // Configuración de Firebase (Reemplazar con tu configuración real)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_PROYECTO.firebaseapp.com",
+            projectId: "TU_PROYECTO",
+            storageBucket: "TU_PROYECTO.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abc123def456"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let datos = {};
+        let seleccionados = [];
+
+        // Inicializar Cuadrícula
+        function renderGrid() {
+            const grid = document.getElementById('gridNumeros');
+            grid.innerHTML = '';
+            for (let i = 0; i < 1000; i++) {
+                let n = String(i).padStart(3, '0');
+                let div = document.createElement('div');
+                div.id = 'n' + n;
+                div.className = 'num libre';
+                div.innerText = n;
+                div.onclick = () => seleccionarNumero(n);
+                grid.appendChild(div);
+            }
+        }
+        renderGrid();
+
+        // Escuchar base de datos en tiempo real
+        db.collection('rifa').onSnapshot(snap => {
+            datos = {}; 
+            snap.forEach(doc => datos[doc.id] = doc.data());
+            
+            let libres = 0, apartados = 0, pagados = 0;
+
+            for (let i = 0; i < 1000; i++) {
+                let n = String(i).padStart(3, '0');
+                let el = document.getElementById('n' + n);
+                let estado = datos[n] ? datos[n].estado : 'libre';
+                
+                el.className = 'num ' + estado + (seleccionados.includes(n) ? ' seleccionado' : '');
+
+                if (estado === 'libre') libres++;
+                else if (estado === 'apartado') apartados++;
+                else if (estado === 'pagado') pagados++;
+            }
+
+            // Actualizar estadísticas
+            document.getElementById('cantidadLibre').innerText = libres;
+            document.getElementById('cantidadApartado').innerText = apartados;
+            document.getElementById('cantidadPagado').innerText = pagados;
+            
+            let porcentaje = ((libres / 1000) * 100).toFixed(1);
+            document.getElementById('porcentajeDisponible').innerText = porcentaje + '%';
+            document.getElementById('barraDisponible').style.width = porcentaje + '%';
+
+            cargarTabla();
+        });
+
+        function seleccionarNumero(n) {
+            if (datos[n]) return; // Ya está reservado u ocupado
+            let idx = seleccionados.indexOf(n);
+            if (idx > -1) {
+                seleccionados.splice(idx, 1);
+            } else {
+                seleccionados.push(n);
+            }
+            document.getElementById('numeros').value = seleccionados.join(', ');
+            
+            // Refrescar visualmente selección
+            for (let i = 0; i < 1000; i++) {
+                let numStr = String(i).padStart(3, '0');
+                let el = document.getElementById('n' + numStr);
+                let estado = datos[numStr] ? datos[numStr].estado : 'libre';
+                el.className = 'num ' + estado + (seleccionados.includes(numStr) ? ' seleccionado' : '');
+            }
+        }
+
+        async function reservar() {
+            let nom = document.getElementById('nombre').value.trim();
+            let tel = document.getElementById('telefono').value.trim();
+            if (!nom || !tel || !seleccionados.length) { alert('Completa todos los datos y selecciona al menos un número'); return; }
+
+            for (let n of seleccionados) {
+                let ref = db.collection('rifa').doc(n);
+                let doc = await ref.get();
+                if (doc.exists) { alert('Número ' + n + ' ya fue tomado'); return; }
+                await ref.set({ nombre: nom, telefono: tel, estado: 'apartado' });
+            }
+
+            window.open(`https://wa.me/18293981020?text=${encodeURIComponent(`Hola soy ${nom} (${tel}) reservé: ${seleccionados.join(', ')}`)}`, '_blank');
+            seleccionados = [];
+            document.getElementById('numeros').value = '';
+        }
+
+        function boletoAzar() {
+            let libres = [];
+            for (let i = 0; i < 1000; i++) {
+                let n = String(i).padStart(3, '0');
+                if (!datos[n]) libres.push(n);
+            }
+            if (!libres.length) { alert('No quedan números disponibles'); return; }
+            let a = libres[Math.floor(Math.random() * libres.length)];
+            seleccionados = [a];
+            document.getElementById('numeros').value = a;
+            
+            // Marcar visualmente
+            seleccionarNumero(a);
+            alert('Tu boleto asignado: ' + a);
+        }
+
+        function mostrarAdmin() {
+            if (prompt('Clave admin:') === '1234') {
+                document.getElementById('adminPanel').style.display = 'block';
+                cargarTabla();
+            }
+        }
+
+        function cargarTabla() {
+            let t = document.getElementById('tabla');
+            if (!t) return;
+            t.innerHTML = '<tr><th>Número</th><th>Nombre</th><th>Teléfono</th><th>Estado</th><th>Acción</th></tr>';
+            for (let n in datos) {
+                let r = datos[n];
+                t.innerHTML += `<tr>
+                    <td>${n}</td>
+                    <td>${r.nombre}</td>
+                    <td>${r.telefono}</td>
+                    <td>${r.estado}</td>
+                    <td>
+                        <button class="btn-primary" onclick="cambiar('${n}','pagado')">Pagado</button>
+                        <button class="btn-admin" onclick="liberar('${n}')">Liberar</button>
+                    </td>
+                </tr>`;
+            }
+        }
+
+        function cambiar(n, e) { db.collection('rifa').doc(n).update({ estado: e }); }
+        function liberar(n) { db.collection('rifa').doc(n).delete(); }
+
+        function descargarCSV() {
+            let csv = 'Numero,Nombre,Telefono,Estado\n';
+            for (let n in datos) {
+                csv += `${n},${datos[n].nombre},${datos[n].telefono},${datos[n].estado}\n`;
+            }
+            let a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+            a.download = 'rifa.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>
